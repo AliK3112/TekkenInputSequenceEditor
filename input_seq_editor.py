@@ -2,7 +2,8 @@ import tkinter as tk
 from tkinter import Scrollbar, filedialog, Text, Listbox
 import os
 import json
-from tkinter.constants import ACTIVE, SINGLE
+from tkinter.constants import ACTIVE, INSERT, SINGLE
+from typing import Sequence
 
 root = tk.Tk()
 root.title("TEKKEN Input Sequence Viewer")
@@ -11,12 +12,20 @@ commandLabels = {}
 
 
 class Input_Sequence:
-    def __init__(self, frames=0, inputs=0, u3=0, index=-1):
+    def __init__(self, frames=0, inputs=0, u3=0, ext_idx=-1):
         self.frames = frames
         self.inputs = inputs
         self.u3 = u3
-        self.ext_idx = index
-        return self
+        self.ext_idx = ext_idx
+
+    def print(self):
+        print(
+            f"Frames: {self.frames} | Inputs: {self.inputs} | ExtIndex: {self.ext_idx}")
+
+
+def print_input_sequences(seq_list):
+    for seq in seq_list:
+        seq.print()
 
 
 class Input_Extradata:
@@ -24,7 +33,6 @@ class Input_Extradata:
         self.index = index
         self.direction = direction
         self.command = command
-        return self
 
 
 def getCommandStr(commandBytes):
@@ -100,12 +108,16 @@ def LoadJSON(filename):
 
 
 def PopulateList(list):
+    obj_list = []
     frame1.delete(0, "end")
     counter = 0
     for i in list:
+        seq = Input_Sequence(i["u1"], i["u2"], i["u3"], i["extradata_idx"])
         frame1.insert("end", ("%4d - Frames: %7d | Inputs: %7d | Extraindex: %4d" %
                       (counter, i["u1"], i["u2"], i["extradata_idx"])))
+        obj_list.append(seq)
         counter += 1
+    # print_input_sequences(obj_list)
 
 
 def addApp():
@@ -113,6 +125,8 @@ def addApp():
         widgets.destroy()
     filename = filedialog.askopenfilename(
         initialdir="./", title="Select JSON file", filetypes=[("Json File", "*.json")])
+    if filename == "":
+        return
     data = LoadJSON(filename)
     label = tk.Label(frame0, text=data["character_name"], bg="#8ca4e7")
     label.pack()
@@ -150,21 +164,40 @@ openFile.pack()
 
 def CurSelect(evt):
     ind = frame1.curselection()
-    frames = input_sequences[ind[0]]["u1"]
-    ninputs = input_sequences[ind[0]]["u2"]
-    index = input_sequences[ind[0]]["extradata_idx"]
+    try:
+        frames = input_sequences[ind[0]]["u1"]
+        ninputs = input_sequences[ind[0]]["u2"]
+        index = input_sequences[ind[0]]["extradata_idx"]
+    except IndexError:  # Only occurs when I click an item from the other side
+        print(f"Index Out of Range. Ind = {ind}")
+        return
+    seq = Input_Sequence(frames, ninputs, 0, index)
     # print(frames, ninputs, index)
     input_extra = data["input_extradata"]
     inputs = input_extra[index:index+ninputs]
     frame2.delete(0, "end")
+    for widgets in frame2.winfo_children():
+        widgets.destroy()
+    # txtbox2 = tk.Text(frame2, height=1, width=20)
+    # txtbox2.pack()
     # print(inputs)
     for i in inputs:
         directions = i["u1"]
         buttons = i["u2"]
         result = (buttons << 32) + directions
-        val = ("%08x %08x - %s" % (buttons, directions, getCommandStr(result)))
+        miniframe = tk.Frame(frame2, height=2, width=40)
+        label1 = tk.Label(miniframe, text=(
+            "%s" % (getCommandStr(result))), width=20)
+        label1.pack(side="left")
+        txtbox1 = tk.Text(miniframe, height=1, width=20)
+        txtbox1.insert(INSERT, "%016x" % result)
+        txtbox1.pack(side="left")
+        miniframe.pack()
+        # val = ("%08x %08x - %s" % (buttons, directions, getCommandStr(result)))
+        val = ("%s" % (getCommandStr(result)))
         # val = ("%016x - %s" % (result, getCommandStr(result)))
-        frame2.insert("end", val)
+        # frame2.insert("end", val)
+        # frame2.insert("end", txtbox1)
     # print(val)
 
 
