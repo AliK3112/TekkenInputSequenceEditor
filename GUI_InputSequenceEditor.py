@@ -13,28 +13,16 @@ def LoadJSON(filename):
     return data
 
 
-def getDirectionalinput(directionBytes):
+def getDirectionalinput(directionBits):
+    valueList = ["D/B", "D", "D/F", "B", "N",
+                 "F", "U/B", "U", "U/F", "UNKNOWN"]
     value = ""
-    if (directionBytes & (1 << 1)):
-        value += "| D/B "
-    if (directionBytes & (1 << 2)):
-        value += "| D "
-    if (directionBytes & (1 << 3)):
-        value += "| D/F "
-    if (directionBytes & (1 << 4)):
-        value += "| B "
-    if (directionBytes & (1 << 5)):
-        value += "| N "
-    if (directionBytes & (1 << 6)):
-        value += "| F "
-    if (directionBytes & (1 << 7)):
-        value += "| U/B "
-    if (directionBytes & (1 << 8)):
-        value += "| U "
-    if (directionBytes & (1 << 9)):
-        value += "| U/F "
-    if (directionBytes & (1 << 10)):
-        value += "| UNKNOWN "
+    for i in range(1, 11):
+        if directionBits & (1 << (i)):
+            value += "| %s " % valueList[i-1]
+
+    if value == "" and directionBits != 0:
+        return "UNKNOWN"
 
     # Checking if command has more than 1 inputs
     if (len(value) > 6):
@@ -158,7 +146,8 @@ class MainWindow:
         self.inputSeqListFrame = Listbox(
             self.root, bg="white", selectmode='single', height=20, width=50)
         # self.inputSeqListFrame.grid(row=1, column=0)
-        self.inputSeqListFrame.place(relwidth=0.5, relheight=0.8, rely=0.05)
+        self.inputSeqListFrame.place(
+            width=400, relheight=0.8, rely=0.05)
         # Attaching Scrollbar to sequence frame list
         scrollbar = Scrollbar(self.inputSeqListFrame)
         scrollbar.pack(side="right", fill="both")
@@ -189,6 +178,7 @@ class MainWindow:
         self.cancels = None
         self.groupCancels = None
         # self.newInputSequenceList = None
+        self.IEEList = []
         return
 
     def ClearParameters(self):
@@ -221,29 +211,14 @@ class MainWindow:
         # Deleting all previous widgets
         for widgets in self.inputExtradataListFrame.winfo_children():
             widgets.destroy()
+        self.IEEList.clear()
 
         for i in extradata_seqList:
             direction = i["u1"]
             buttons = i["u2"]
             result = (buttons << 32) + direction
-            miniframe = Frame(self.inputExtradataListFrame, height=2, width=40)
-            command = getCommandStr(result)
-            label1 = Label(miniframe, text=(
-                "%s" % command), width=20)
-            label1.pack(side="left")
-            txtbox1 = Text(miniframe, height=1, width=20)
-            # txtbox1.bind("<<Modified>>", ValueChanged)
-            txtbox1.insert('insert', "%0.16x" % result)
-            txtbox1.pack(side="left")
-            # sv = StringVar()
-            # sv.trace("w", lambda name, index, mode, label=label1,
-            #          sv=sv: ValueChanged(sv, label))
-            miniframe.pack()
-            # val = ("%08x %08x - %s" % (buttons, directions, getCommandStr(result)))
-            val = ("%s" % command)
-            # val = ("%016x - %s" % (result, getCommandStr(result)))
-            # frame2.insert("end", val)
-            # frame2.insert("end", txtbox1)
+            self.IEEList.append(self.InputExtradataEditor(
+                self.inputExtradataListFrame, result))
         return
 
     def OpenFile(self):
@@ -281,6 +256,37 @@ class MainWindow:
 
     def main_loop(self):
         self.root.mainloop()
+
+    class InputExtradataEditor:
+        def __init__(self, parentroot, command=None):
+            self.root = parentroot
+
+            # Creating a frame
+            self.extradataFrame = Frame(
+                self.root, height=2, width=60)
+
+            # Creating label widget
+            self.cmdLabel = Label(self.extradataFrame, text="", width=35)
+
+            # Creating entry widget
+            self.cmdEntry = Entry(self.extradataFrame, width=25)
+
+            # Packing both inside the parent
+            self.cmdLabel.pack(side='left')
+            self.cmdEntry.pack(side='left')
+
+            if command != None:
+                self.setLabel(command)
+
+            # Packing parent
+            self.extradataFrame.pack()
+
+        def setLabel(self, command):
+            commandLabel = getCommandStr(command)
+            self.cmdLabel.config(text=commandLabel)
+            self.cmdEntry.delete(0, 'end')
+            self.cmdEntry.insert(0, "0x%0.16x" % command)
+            return
 
     class CurrentInputSequenceEditor:
         def __init__(self, parentroot):
