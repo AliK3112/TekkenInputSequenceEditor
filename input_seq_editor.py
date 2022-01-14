@@ -1,8 +1,7 @@
 import tkinter as tk
-from tkinter import Scrollbar, filedialog, Text, Listbox
-import os
+from tkinter import Event, Scrollbar, filedialog, Text, Listbox
+import re
 import json
-from tkinter.constants import ACTIVE, INSERT, SINGLE
 from typing import Sequence
 
 root = tk.Tk()
@@ -35,6 +34,37 @@ class Input_Extradata:
         self.command = command
 
 
+def getDirectionalinput(directionBytes):
+    value = ""
+    if (directionBytes & (1 << 1)):
+        value += "| D/B "
+    if (directionBytes & (1 << 2)):
+        value += "| D "
+    if (directionBytes & (1 << 3)):
+        value += "| D/F "
+    if (directionBytes & (1 << 4)):
+        value += "| B "
+    if (directionBytes & (1 << 5)):
+        value += "| N "
+    if (directionBytes & (1 << 6)):
+        value += "| F "
+    if (directionBytes & (1 << 7)):
+        value += "| U/B "
+    if (directionBytes & (1 << 8)):
+        value += "| U "
+    if (directionBytes & (1 << 9)):
+        value += "| U/F "
+    if (directionBytes & (1 << 10)):
+        value += "| UNK "
+
+    # Checking if command has more than 1 inputs
+    if (len(value) > 6):
+        return "(%s)" % value[2:-1]
+    # elif (len(value) == 0):
+    #     return "UNKNOWN"
+    return value[1:]
+
+
 def getCommandStr(commandBytes):
     inputs = ""
     direction = ""
@@ -56,29 +86,42 @@ def getCommandStr(commandBytes):
         if inputBits & (1 << (i - 1)):
             inputs += "+%d" % (i)
 
-    if directionBits in commandLabels:
-        direction = '(%s)' % commandLabels[directionBits]
-    elif 32781 <= directionBits <= 36863:
-        direction = " input_sequence[%d]" % (directionBits - 32781)
-    else:
+    if directionBits < 0x8000:
+        direction = getDirectionalinput(directionBits)
+    elif directionBits < 0x800d:
         direction = {
-            (0): "",
-            (1 << 1): "D/B",
-            (1 << 2): "D",
-            (1 << 3): "D/F",
-            (1 << 4): "B",
-            (1 << 5): "N",
-            (1 << 6): "F",
-            (1 << 7): "U/B",
-            (1 << 8): "U",
-            (1 << 9): "U/F",
-            (1 << 15): "[AUTO]",
+            (32768): "[AUTO]",
             (32769): " Double tap F",
             (32770): " Double tap B",
             (32771): " Double tap U",
             (32772): " Double tap D",
         }.get(directionBits, "UNKNOWN")
+    elif directionBits <= 36863:
+        direction = " input_sequence[%d]" % directionBits - 0x800d
+    else:
+        direction = "UNKNOWN"
 
+        # if directionBits in commandLabels:
+        #     direction = '(%s)' % commandLabels[directionBits]
+        # else:
+        #     direction = {
+        #         (0): "",
+        #         (1 << 1): "D/B",
+        #         (1 << 2): "D",
+        #         (1 << 3): "D/F",
+        #         (1 << 4): "B",
+        #         (1 << 5): "N",
+        #         (1 << 6): "F",
+        #         (1 << 7): "U/B",
+        #         (1 << 8): "U",
+        #         (1 << 9): "U/F",
+        #         (1 << 15): "[AUTO]",
+        #         (32769): " Double tap F",
+        #         (32770): " Double tap B",
+        #         (32771): " Double tap U",
+        #         (32772): " Double tap D",
+        #     }.get(directionBits, "UNKNOWN")
+    # direction = getDirectionalinput(directionBits)
     if direction == "" and inputs != "":
         return inputs[1:]
     if inputBits >> 29 == 1:
@@ -123,10 +166,13 @@ def PopulateList(list):
 def addApp():
     for widgets in frame0.winfo_children():
         widgets.destroy()
+    #
     filename = filedialog.askopenfilename(
         initialdir="./", title="Select JSON file", filetypes=[("Json File", "*.json")])
     if filename == "":
         return
+    # Just for convenience
+    # filename = "F:\My_Cheat_Tables\Scripts\TekkenInputSequenceEditor\\t7_DEVIL_JIN.json"
     data = LoadJSON(filename)
     label = tk.Label(frame0, text=data["character_name"], bg="#8ca4e7")
     label.pack()
@@ -140,7 +186,7 @@ canvas = tk.Canvas(root, height=500, width=700, bg="#263D42")
 canvas.pack()
 
 
-frame1 = tk.Listbox(root, bg="white", selectmode=SINGLE)
+frame1 = tk.Listbox(root, bg="white", selectmode='single')
 frame1.place(relwidth=0.5, relheight=0.8, rely=0.1)
 
 scrollbar = Scrollbar(frame1)
@@ -148,7 +194,7 @@ scrollbar.pack(side="right", fill="both")
 frame1.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=frame1.yview)
 
-frame2 = tk.Listbox(root, bg="#d8dce6", selectmode=SINGLE)
+frame2 = tk.Listbox(root, bg="#d8dce6", selectmode='single')
 frame2.place(relwidth=0.5, relheight=0.8, relx=0.5, rely=0.1)
 
 frame0 = tk.Frame(root, bg="#e4bdba")
@@ -190,8 +236,12 @@ def CurSelect(evt):
             "%s" % (getCommandStr(result))), width=20)
         label1.pack(side="left")
         txtbox1 = tk.Text(miniframe, height=1, width=20)
-        txtbox1.insert(INSERT, "%016x" % result)
+        # txtbox1.bind("<<Modified>>", ValueChanged)
+        txtbox1.insert('insert', "%016x" % result)
         txtbox1.pack(side="left")
+        sv = tk.StringVar()
+        sv.trace("w", lambda name, index, mode, label=label1,
+                 sv=sv: ValueChanged(sv, label))
         miniframe.pack()
         # val = ("%08x %08x - %s" % (buttons, directions, getCommandStr(result)))
         val = ("%s" % (getCommandStr(result)))
@@ -215,6 +265,19 @@ def PressUp():
         frame1.select_clear(ind)
         ind -= 1
         frame1.select_set(ind)
+
+
+def ValueChanged(sv, label):
+    value = sv.get()
+    if value == "":
+        label.text = ""
+        return
+    if re.match("^[0-9A-Fa-f]+$", value):
+        label.text = getCommandStr(value)
+    else:
+        label.text = "INVALID"
+    print("HELLO")
+    return
 
 
 frame1.bind('<<ListboxSelect>>', CurSelect)
