@@ -2,6 +2,13 @@ import json
 from tkinter import *
 from tkinter import filedialog
 
+# Movset Data
+movesetData = None
+inputSequence = None
+inputExtradata = None
+cancels = None
+groupCancels = None
+
 
 def LoadJSON(filename):
     try:
@@ -22,7 +29,7 @@ def getDirectionalinput(directionBits):
             value += "| %s " % valueList[i-1]
 
     if value == "" and directionBits != 0:
-        return "UNKNOWN"
+        return "INVALID"
 
     # Checking if command has more than 1 inputs
     if (len(value) > 6):
@@ -37,12 +44,13 @@ def getCommandStr(commandBytes):
     inputBits = commandBytes >> 32
     directionBits = commandBytes & 0xffffffff
 
+    # Checks if commands requires Button Holding
     # for i in range(9, 12):
     #     if inputBits & (1 << (i)):
-    #         if inputs == "":
-    #             inputs += " Hold %d" % (i-8)
-    #         else:
-    #             inputs += "+%d" % (i-8)
+    #         inputs += "+%d" % (i-8)
+    # if inputs != "":
+    #     inputs = "Hold " + inputs[1:]
+    #     holdFlag = True
 
     if inputBits & (1 << 4):
         inputs += "+RA"  # Label for Rage Art button
@@ -100,6 +108,9 @@ class Input_Extradata:
 
 
 class MainWindow:
+    # newInputSequenceList = None
+    IEEList = []  # Input Extrasequence Editor widget List
+
     def __init__(self):
         # Setting Main Window Parameters
         self.root = Tk()
@@ -117,7 +128,7 @@ class MainWindow:
         self.menu1 = Menu(self.menu)
         self.menu2 = Menu(self.menu)
 
-        # Adding those to main menu bar widget
+        # Adding those to menu bar widget
         self.menu.add_cascade(label="New", menu=self.menu1)
         self.menu.add_cascade(label="Delete", menu=self.menu2)
         self.menu.add_cascade(label="Help", command=self.ShowHelpBox)
@@ -142,6 +153,9 @@ class MainWindow:
         self.filename_label = Label(self.root, text="NO FILE OPENED")
         self.filename_label.grid(row=0, column=0)
 
+        # Adding Buttons for commands
+        # TODO
+
         # Creating Two main widgets (list boxes)
         self.inputSeqListFrame = Listbox(
             self.root, bg="white", selectmode='single', height=20, width=50)
@@ -163,22 +177,13 @@ class MainWindow:
 
         # Creating & Placing the current editor
         self.currentInputSequenceEditor = self.CurrentInputSequenceEditor(
-            self.root)
+            self.root, self.inputExtradataListFrame)
 
         # Creating "Open File" button & placing it
         self.openFileButton = Button(self.root, text="Open File", padx=10,
                                      pady=5, fg="white", bg="#263D42", command=self.OpenFile)
         # self.openFileButton.grid(row=600, column=0, padx=10)
         self.openFileButton.place(rely=0.94)
-
-        # Setting Moveset Data
-        self.movesetData = None
-        self.inputSequence = None
-        self.inputExtradata = None
-        self.cancels = None
-        self.groupCancels = None
-        # self.newInputSequenceList = None
-        self.IEEList = []
         return
 
     def ClearParameters(self):
@@ -190,35 +195,41 @@ class MainWindow:
         print("HELP CLICKED!")
         return
 
-    def sequenceSelected(self, event):
+    def sequenceSelected(self, evt):
         ind = self.inputSeqListFrame.curselection()
+        if len(ind) == 0:
+            print("Nothing selected")
+            return
         try:
-            frames = self.inputSequence[ind[0]]["u1"]
-            ninputs = self.inputSequence[ind[0]]["u2"]
-            u3 = self.inputSequence[ind[0]]["u3"]
-            index = self.inputSequence[ind[0]]["extradata_idx"]
+            frames = inputSequence[ind[0]]["u1"]
+            ninputs = inputSequence[ind[0]]["u2"]
+            u3 = inputSequence[ind[0]]["u3"]
+            index = inputSequence[ind[0]]["extradata_idx"]
         except IndexError:  # Only occurs when I click an item from the other side
             print(f"Index Out of Range. Ind = {ind}")
             return
-        extradata_seqList = self.inputExtradata[index: ninputs + index]
+        # if frames == -1:
+        #     print("Nothing selected")
+        #     return
         seq = Input_Sequence(frames, ninputs, u3, index)
 
         # Passing current sequence to the editor
         self.currentInputSequenceEditor.populate(seq)
 
-        self.inputExtradataListFrame.delete(0, 'end')
+        # self.inputExtradataListFrame.delete(0, 'end')
 
-        # Deleting all previous widgets
-        for widgets in self.inputExtradataListFrame.winfo_children():
-            widgets.destroy()
-        self.IEEList.clear()
+        # # Deleting all previous widgets
+        # for widgets in self.inputExtradataListFrame.winfo_children():
+        #     widgets.destroy()
+        # self.IEEList.clear()
+        # extradata_seqList = self.inputExtradata[index: ninputs + index]
+        # for i in extradata_seqList:
+        #     direction = i["u1"]
+        #     buttons = i["u2"]
+        #     result = (buttons << 32) + direction
+        #     self.IEEList.append(MainWindow.InputExtradataEditor(
+        #         self.inputExtradataListFrame, result))
 
-        for i in extradata_seqList:
-            direction = i["u1"]
-            buttons = i["u2"]
-            result = (buttons << 32) + direction
-            self.IEEList.append(self.InputExtradataEditor(
-                self.inputExtradataListFrame, result))
         return
 
     def OpenFile(self):
@@ -226,12 +237,20 @@ class MainWindow:
             initialdir="./", title="Select JSON file", filetypes=[("Json File", "*.json")])
         if self.filename == "":
             return
-        self.movesetData = LoadJSON(self.filename)
-        self.filename_label.config(text=self.movesetData['character_name'])
-        self.inputSequence = self.movesetData["input_sequences"]
-        self.inputExtradata = self.movesetData["input_extradata"]
-        self.cancels = self.movesetData["cancels"]
-        self.groupCancels = self.movesetData["group_cancels"]
+
+        # Creating Moveset Data
+        global movesetData
+        global inputSequence
+        global inputExtradata
+        global cancels
+        global groupCancels
+
+        movesetData = LoadJSON(self.filename)
+        self.filename_label.config(text=movesetData['character_name'])
+        inputSequence = movesetData["input_sequences"]
+        inputExtradata = movesetData["input_extradata"]
+        cancels = movesetData["cancels"]
+        groupCancels = movesetData["group_cancels"]
         self.PopulateList()
         return
 
@@ -241,11 +260,11 @@ class MainWindow:
         # extradata_seqList = None
         extidx = -1
         counter = 0
-        for i in self.inputSequence:
+        for i in inputSequence:
             frames = i["u1"]
             ninputs = i["u2"]
             extidx = i["extradata_idx"]
-            # extradata_seqList = self.inputExtradata[extidx: ninputs+extidx]
+            # extradata_seqList = inputExtradata[extidx: ninputs+extidx]
             seq = Input_Sequence(frames, ninputs, i["u3"],
                                  extidx)
             self.inputSeqListFrame.insert(
@@ -266,7 +285,8 @@ class MainWindow:
                 self.root, height=2, width=60)
 
             # Creating label widget
-            self.cmdLabel = Label(self.extradataFrame, text="", width=35)
+            self.cmdLabel = Label(self.extradataFrame,
+                                  text="", width=35)
 
             # Creating entry widget
             self.cmdEntry = Entry(self.extradataFrame, width=25)
@@ -289,8 +309,9 @@ class MainWindow:
             return
 
     class CurrentInputSequenceEditor:
-        def __init__(self, parentroot):
+        def __init__(self, parentroot, iELF=None):
             self.root = parentroot
+            self.inputExtradataListFrame = iELF
 
             # Creating a frame
             self.Frame = Frame(self.root, height=3, borderwidth=3)
@@ -300,8 +321,18 @@ class MainWindow:
             self.u1_entry = Entry(self.Frame, width=20)
             self.u2_label = Label(self.Frame, text="Number of Inputs")
             self.u2_entry = Entry(self.Frame, width=20)
-            self.idx_label = Label(self.Frame, text="Input Extradata Index")
+            self.idx_label = Label(
+                self.Frame, text="Input Extradata Index", cursor='hand2', bg="#cce3e1")
             self.idx_entry = Entry(self.Frame, width=20)
+
+            # Binding
+            # frames = int(self.u1_entry.get()
+            #              ) if self.u1_entry.get() != "" else -1
+            # inputs = int(self.u2_entry.get()
+            #              ) if self.u2_entry.get() != "" else -1
+            # index = int(self.idx_entry.get()
+            #             ) if self.idx_entry.get() != "" else -1
+            self.idx_label.bind('<Button-1>', self.fetchValues)
 
             # Placing widgets inside frames
             self.u1_label.grid(row=0, column=0)
@@ -322,6 +353,38 @@ class MainWindow:
             self.u2_entry.insert(0, sequenceObj.inputs)
             self.idx_entry.insert(0, sequenceObj.ext_idx)
             return
+
+        def fetchValues(self, e):
+            # Binding
+            # frames = self.u1_entry.get()
+            # if frames != "":
+            #     frames = int(self.u1_entry.get())
+            frames = int(self.u1_entry.get()
+                         ) if self.u1_entry.get() != "" else -1
+            inputs = int(self.u2_entry.get()
+                         ) if self.u2_entry.get() != "" else -1
+            index = int(self.idx_entry.get()
+                        ) if self.idx_entry.get() != "" else -1
+            if frames != -1 and inputs != -1 and index != -1:
+                self.populateExtradataList(frames, inputs, 0, index)
+
+        def populateExtradataList(self, frames, ninputs, u3, index):
+            # Deleting all previous widgets
+            # print("populateExtradataList()")
+            self.inputExtradataListFrame.delete(0, 'end')
+            for widgets in self.inputExtradataListFrame.winfo_children():
+                widgets.destroy()
+            MainWindow.IEEList.clear()
+            # global inputExtradata
+            extradata_seqList = inputExtradata[index: ninputs + index]
+            for i in extradata_seqList:
+                direction = i["u1"]
+                buttons = i["u2"]
+                result = (buttons << 32) + direction
+                MainWindow.IEEList.append(MainWindow.InputExtradataEditor(
+                    self.inputExtradataListFrame, result))
+            return
+# End of MainWindow class
 
 
 def main():
